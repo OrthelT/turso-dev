@@ -54,3 +54,4 @@ bisected.sql
 settings.local.json
 .claude/agents/
 .build-hash
+CLAUDE.md
