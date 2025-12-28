@@ -26,7 +26,10 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Topic :: Database :: Database Engines/Servers',
 ]
-dependencies = ['typing-extensions >=4.6.0,!=4.7.0']
+dependencies = [
+    "colorlog>=6.10.1",
+    'typing-extensions >=4.6.0,!=4.7.0',
+]
 dynamic = ['readme', 'version']
 
 [project.optional-dependencies]
