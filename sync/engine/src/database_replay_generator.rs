@@ -195,7 +195,7 @@ impl DatabaseReplayGenerator {
                             before.get(1)
                         );
                     };
-                    let query = format!("DROP {} {}", entity_type.as_str(), entity_name.as_str());
+                    let query = format!("DROP {} IF EXISTS {}", entity_type.as_str(), entity_name.as_str());
                     let delete = ReplayInfo {
                         change_type: DatabaseChangeType::Delete,
                         query,

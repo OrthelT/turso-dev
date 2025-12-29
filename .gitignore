@@ -54,3 +54,8 @@ bisected.sql
 settings.local.json
 .claude/agents/
 .build-hash
+CLAUDE.md
+bindings/python/dev.py
+bindings/python/logging_config.py
+bindings/python/logs/
+bindings/python/implementation-test/

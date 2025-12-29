@@ -26,7 +26,10 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Topic :: Database :: Database Engines/Servers',
 ]
-dependencies = ['typing-extensions >=4.6.0,!=4.7.0']
+dependencies = [
+    "colorlog>=6.10.1",
+    'typing-extensions >=4.6.0,!=4.7.0',
+]
 dynamic = ['readme', 'version']
 
 [project.optional-dependencies]
@@ -38,10 +41,17 @@ dev = [
     "coverage==7.6.1",
     "maturin==1.7.8",
 ]
+sqlalchemy = [
+    "sqlalchemy>=2.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/tursodatabase/turso"
 Source = "https://github.com/tursodatabase/turso"
+
+[project.entry-points."sqlalchemy.dialects"]
+"sqlite.turso" = "turso.sqlalchemy:TursoDialect"
+"sqlite.turso_sync" = "turso.sqlalchemy:TursoSyncDialect"
 
 [tool.maturin]
 bindings = 'pyo3'
