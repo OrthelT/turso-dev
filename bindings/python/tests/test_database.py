@@ -406,6 +406,48 @@ def test_row_factory_keys(provider):
     conn.close()
 
 
+def test_stdlib_sqlite3_row_factory():
+    """sqlite3.Row must work as row_factory on turso connections without crashing.
+
+    sqlite3.Row.__new__ does a C-level isinstance(cursor, sqlite3.Cursor) check.
+    turso intercepts it and returns its own Row (same interface) instead of
+    passing its Cursor into the C constructor.
+    """
+    conn = turso.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE t (id INTEGER, name TEXT)")
+    cur.execute("INSERT INTO t VALUES (1, 'alice')")
+    cur.execute("INSERT INTO t VALUES (2, 'bob')")
+    cur.execute("SELECT * FROM t ORDER BY id")
+
+    row = cur.fetchone()
+    assert row["id"] == 1
+    assert row["name"] == "alice"
+    assert row[0] == 1
+    assert row[1] == "alice"
+    assert row.keys() == ["id", "name"]
+
+    rows = cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0]["id"] == 2
+
+    conn.close()
+
+
+def test_stdlib_sqlite3_row_factory_via_execute_shortcut():
+    """sqlite3.Row row_factory works via the Connection.execute() shortcut."""
+    conn = turso.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE t (x INTEGER, y TEXT)")
+    conn.execute("INSERT INTO t VALUES (42, 'hello')")
+    row = conn.execute("SELECT * FROM t").fetchone()
+    assert row["x"] == 42
+    assert row["y"] == "hello"
+    conn.close()
+
+
 @pytest.mark.parametrize("provider", ["sqlite3", "turso"])
 def test_parameterized_query(provider):
     conn = connect(provider, ":memory:")

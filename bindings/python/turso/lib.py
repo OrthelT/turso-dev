@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3 as _stdlib_sqlite3
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import TracebackType
@@ -844,10 +845,16 @@ class Cursor:
         rf = self.row_factory
         if rf is None:
             return row_values
+        # sqlite3.Row.__new__ does a C-level isinstance(cursor, sqlite3.Cursor) check and
+        # rejects turso's Cursor. Intercept it and return our Row, which has the same
+        # interface (row['col'], row[i], .keys()).
+        if rf is _stdlib_sqlite3.Row:
+            return Row(self, row_values)
         if isinstance(rf, type) and issubclass(rf, Row):
-            return rf(self, Row(self, row_values))  # type: ignore[call-arg]
+            return rf(self, row_values)
         if callable(rf):
-            return rf(self, Row(self, row_values))  # type: ignore[misc]
+            # Pass the raw tuple, matching sqlite3's row_factory(cursor, row_tuple) contract.
+            return rf(self, row_values)  # type: ignore[misc]
         # Fallback: return tuple
         return row_values
 
