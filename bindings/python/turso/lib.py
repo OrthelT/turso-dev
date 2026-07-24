@@ -851,10 +851,9 @@ class Cursor:
         if rf is _stdlib_sqlite3.Row:
             return Row(self, row_values)
         if isinstance(rf, type) and issubclass(rf, Row):
-            return rf(self, row_values)
+            return rf(self, Row(self, row_values))  # type: ignore[call-arg]
         if callable(rf):
-            # Pass the raw tuple, matching sqlite3's row_factory(cursor, row_tuple) contract.
-            return rf(self, row_values)  # type: ignore[misc]
+            return rf(self, Row(self, row_values))  # type: ignore[misc]
         # Fallback: return tuple
         return row_values
 
