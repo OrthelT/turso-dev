@@ -1,0 +1,20 @@
+Aggregate  (cost=4213.95..4213.96 rows=1 width=16) (actual time=48.932..48.935 rows=1 loops=1)
+  Buffers: shared hit=1093
+  ->  Hash Right Join  (cost=4138.00..4201.45 rows=2500 width=8) (actual time=48.053..48.833 rows=2000 loops=1)
+        Hash Cond: ((history_txt.type_id)::integer = w.type_id)
+        Buffers: shared hit=1093
+        ->  HashAggregate  (cost=4082.00..4113.25 rows=2500 width=12) (actual time=47.660..47.910 rows=2500 loops=1)
+              Group Key: history_txt.type_id
+              Batches: 1  Memory Usage: 625kB
+              Buffers: shared hit=1082
+              ->  Seq Scan on history_txt  (cost=0.00..3082.00 rows=200000 width=8) (actual time=0.004..12.625 rows=200000 loops=1)
+                    Buffers: shared hit=1082
+        ->  Hash  (cost=31.00..31.00 rows=2000 width=4) (actual time=0.374..0.375 rows=2000 loops=1)
+              Buckets: 2048  Batches: 1  Memory Usage: 87kB
+              Buffers: shared hit=11
+              ->  Seq Scan on watchlist w  (cost=0.00..31.00 rows=2000 width=4) (actual time=0.005..0.155 rows=2000 loops=1)
+                    Buffers: shared hit=11
+Planning:
+  Buffers: shared hit=178
+Planning Time: 0.545 ms
+Execution Time: 49.154 ms

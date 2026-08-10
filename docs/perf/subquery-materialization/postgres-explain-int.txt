@@ -1,0 +1,20 @@
+Aggregate  (cost=4213.32..4213.33 rows=1 width=16) (actual time=43.293..43.297 rows=1 loops=1)
+  Buffers: shared hit=1093
+  ->  Hash Right Join  (cost=4138.00..4200.82 rows=2500 width=8) (actual time=42.592..43.194 rows=2000 loops=1)
+        Hash Cond: (history_int.type_id = w.type_id)
+        Buffers: shared hit=1093
+        ->  HashAggregate  (cost=4082.00..4113.25 rows=2500 width=12) (actual time=42.198..42.433 rows=2500 loops=1)
+              Group Key: history_int.type_id
+              Batches: 1  Memory Usage: 625kB
+              Buffers: shared hit=1082
+              ->  Seq Scan on history_int  (cost=0.00..3082.00 rows=200000 width=8) (actual time=0.004..11.980 rows=200000 loops=1)
+                    Buffers: shared hit=1082
+        ->  Hash  (cost=31.00..31.00 rows=2000 width=4) (actual time=0.379..0.380 rows=2000 loops=1)
+              Buckets: 2048  Batches: 1  Memory Usage: 87kB
+              Buffers: shared hit=11
+              ->  Seq Scan on watchlist w  (cost=0.00..31.00 rows=2000 width=4) (actual time=0.006..0.152 rows=2000 loops=1)
+                    Buffers: shared hit=11
+Planning:
+  Buffers: shared hit=88
+Planning Time: 0.491 ms
+Execution Time: 43.448 ms
