@@ -25,7 +25,7 @@ CREATE TABLE history_txt (type_id VARCHAR, price REAL, ts INTEGER);  -- 200,000 
 CREATE TABLE history_int (type_id INTEGER, price REAL, ts INTEGER);  -- 200,000 rows, same data
 ```
 
-Data generator (any distribution works; this is what the numbers below used):
+This script generates the data used for the timings below. The specific values are not important — the bug reproduces with any data of this shape:
 
 ```python
 import random
@@ -53,14 +53,14 @@ LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_txt GROUP BY type_id)
 
 > **Reproducing this requires `LEFT JOIN`, not plain `JOIN`.** The LEFT JOIN forces `watchlist` to stay on the outer side of the join. With an inner `JOIN`, the optimizer moves the subquery to the outer position and the slowdown does not occur.
 
-Timings (debug build — ratios are meaningful, absolute numbers carry roughly 30–60× overhead vs a release build; outer table cut to 100 rows so the slow case terminates):
+Two notes on the timings below. First, they were measured on a debug build, which is roughly 30–60× slower than a release build across the board — so compare the two rows against each other rather than reading the absolute times. Second, for these runs `watchlist` was loaded with 100 rows instead of 2,000: the slow variant re-runs the 200,000-row aggregation once per `watchlist` row, so measuring it at the full 2,000 rows on a debug build would take about an hour.
 
-| subquery source | join-key comparison | plan | time (100 outer rows) |
+| subquery source | join-key comparison | plan | time (100 `watchlist` rows) |
 |---|---|---|---|
 | `history_int` | INTEGER = INTEGER | `SEARCH h USING INDEX ephemeral_subquery_t3 (type_id=?)` | **2.1 s** |
 | `history_txt` | INTEGER = VARCHAR | `SCAN h` (coroutine, re-executed per row) | **167.5 s (~80×)** |
 
-The slowdown is linear in outer-row count, consistent with the production report.
+The gap grows linearly with the `watchlist` row count, which matches the production report (2,354 rows: 117 s vs SQLite's 0.27 s).
 
 ## The two plans, visualized
 
@@ -151,7 +151,7 @@ Related but distinct open issues: #7393 (collation on the same access-method pat
 | approach | effect |
 |---|---|
 | `CAST(type_id AS INTEGER)` inside the subquery | Restores INTEGER affinity, re-opening the ephemeral-index path. 117 s → 0.10 s in production. |
-| `WITH h AS MATERIALIZED (…)` | Forces table materialization, hoisting the aggregation out of the loop. Debug build: 167.5 s → 5.6 s (100 outer rows); the 2,000-row case goes from *did not finish* to 33.6 s. |
+| `WITH h AS MATERIALIZED (…)` | Forces table materialization, hoisting the aggregation out of the loop. On the debug build: 167.5 s → 5.6 s with 100 `watchlist` rows; with the full 2,000 rows the default plan was abandoned after several minutes while the `MATERIALIZED` plan completes in 33.6 s. |
 
 The `AS MATERIALIZED` plan is the shape the planner should reach on its own — the aggregation runs once and the join re-scans the small cached result, exactly SQLite's plan for this query:
 
