@@ -89,8 +89,17 @@ per-outer-row re-execution.
 
 ## Suggested next steps
 
-1. Confirm `d33016ff8` / `4f9f028d9` hashes against `tursodatabase/turso`.
-2. File the issue with the two-decision framing above.
+1. ~~Confirm `d33016ff8` / `4f9f028d9` hashes against `tursodatabase/turso`.~~
+   **Done (2026-08-10)** — both resolve upstream; full hashes, subjects, and
+   dates recorded in the findings' caveats section. The commit-body quote is
+   verbatim.
+2. File the issue with the two-decision framing above. Embed the plan-graph
+   captures in [`planviz/`](planviz/README.md) (made with PR #8316's
+   provisional `--planviz` visualizer): coroutine-bug vs
+   matched-affinity-indexed is the bug in one side-by-side;
+   materialized-workaround is the target plan shape. The structured JSON
+   (`subquery.execution: "coroutine"`) also re-confirms the repro on a branch
+   newer than `d14a446` (`dc3ada223`).
 3. Implement the primary fix (structural gating), covering all five fallback
    paths including the intrinsic-order return.
 4. `.sqltest` plan-shape coverage, both directions.

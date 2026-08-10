@@ -59,6 +59,12 @@ Mismatched affinity — subquery body (addrs 2-45: full scan of `history_txt` in
 
 Matched affinity — subquery runs once at addrs 1-47, *before* the outer `Rewind` at 49, writing into `ephemeral_subquery_t3`; the outer loop only does `SeekGE`/`IdxGT`.
 
+**Visual evidence:** the same three plans rendered as dataflow graphs with PR
+[#8316](https://github.com/tursodatabase/turso/pull/8316)'s `tursodb --planviz`
+scaffolding — including structured-JSON `subquery.execution` confirmation
+(`"coroutine"` vs `"indexed_materialized"`) on a branch newer than `d14a446` —
+in [`planviz/`](planviz/README.md).
+
 ---
 
 ## Root cause chain
@@ -225,4 +231,4 @@ Scratchpad (`/tmp/claude-0/-home-user-turso-dev/f07c8054-6767-5fc8-9cf6-b3f5d91c
 Caveats:
 - All Turso timings are from a **debug build** (`cargo build`, per `CLAUDE.md`). Ratios are meaningful; absolute numbers carry ~30-60x overhead. SQLite timings are from an optimized library.
 - #2974's two comments were not read — GitHub's API returned 403 through the session proxy and MCP issue reads were scoped to `orthelt/turso-dev`. The commit-message evidence above was obtained from git history instead and is stronger.
-- `git log` evidence came from `OrthelT/turso-dev` unshallowed (18,774 commits); commit hashes should match upstream for these pre-fork commits but are worth confirming against `tursodatabase/turso` before quoting in a public issue.
+- ~~`git log` evidence came from `OrthelT/turso-dev` unshallowed (18,774 commits); commit hashes should match upstream for these pre-fork commits but are worth confirming against `tursodatabase/turso` before quoting in a public issue.~~ **Confirmed against upstream (2026-08-10)** via the GitHub API: `d33016ff8a43ee265ab2455d7a355d354b8ed471` ("Add support for materialized FROM clause subqueries and CTEs", authored 2026-01-28, committed 2026-02-13), merged as `ee3c2bfc55c788ace0dd09e3cee596cb928d09df` ("Merge 'Add support for FROM-clause subquery materialization and CTE materialization' from Jussi Saurio"), and `4f9f028d9194841a959fcf3f39c52490f5fcfc83` ("translate: align CTE materialization logic with sqlite"). The block quote in "Prior art" is verbatim from the upstream commit body. Note the *commit* subject differs slightly from the *merge* subject; cite whichever hash you quote.

@@ -1,0 +1,62 @@
+{
+    "version": 1,
+    "sql": "EXPLAIN QUERY PLAN SELECT count(*), sum(h.avgp) FROM watchlist w LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_int GROUP BY type_id) h ON w.type_id = h.type_id",
+    "result_columns": [
+        "count(*)",
+        "sum(h.avgp)"
+    ],
+    "nodes": [
+        {
+            "id": 1,
+            "parent": null,
+            "detail": "SCAN watchlist AS w",
+            "op": {
+                "type": "scan",
+                "table": "watchlist",
+                "alias": "w",
+                "source": "table"
+            }
+        },
+        {
+            "id": 2,
+            "parent": null,
+            "detail": "SEARCH h USING INDEX ephemeral_subquery_t3 (type_id=?) LEFT-JOIN",
+            "op": {
+                "type": "search",
+                "table": "h",
+                "join": "left",
+                "subquery": {
+                    "execution": "indexed_materialized"
+                },
+                "search_kind": "seek",
+                "index": {
+                    "name": "ephemeral_subquery_t3",
+                    "covering": false,
+                    "ephemeral": true
+                },
+                "constraints": [
+                    "type_id=?"
+                ]
+            }
+        },
+        {
+            "id": 4,
+            "parent": 2,
+            "detail": "SCAN history_int",
+            "op": {
+                "type": "scan",
+                "table": "history_int",
+                "source": "table"
+            }
+        },
+        {
+            "id": 7,
+            "parent": 2,
+            "detail": "USE SORTER FOR GROUP BY",
+            "op": {
+                "type": "group_by",
+                "method": "sorter"
+            }
+        }
+    ]
+}

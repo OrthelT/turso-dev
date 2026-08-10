@@ -1,0 +1,54 @@
+{
+    "version": 1,
+    "sql": "EXPLAIN QUERY PLAN SELECT count(*), sum(h.avgp) FROM watchlist w LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_txt GROUP BY type_id) h ON w.type_id = h.type_id",
+    "result_columns": [
+        "count(*)",
+        "sum(h.avgp)"
+    ],
+    "nodes": [
+        {
+            "id": 1,
+            "parent": null,
+            "detail": "SCAN watchlist AS w",
+            "op": {
+                "type": "scan",
+                "table": "watchlist",
+                "alias": "w",
+                "source": "table"
+            }
+        },
+        {
+            "id": 2,
+            "parent": null,
+            "detail": "SCAN h",
+            "op": {
+                "type": "scan",
+                "table": "h",
+                "join": "left",
+                "subquery": {
+                    "execution": "coroutine"
+                },
+                "source": "subquery"
+            }
+        },
+        {
+            "id": 4,
+            "parent": 2,
+            "detail": "SCAN history_txt",
+            "op": {
+                "type": "scan",
+                "table": "history_txt",
+                "source": "table"
+            }
+        },
+        {
+            "id": 7,
+            "parent": 2,
+            "detail": "USE SORTER FOR GROUP BY",
+            "op": {
+                "type": "group_by",
+                "method": "sorter"
+            }
+        }
+    ]
+}
