@@ -7,8 +7,9 @@
 Everything below the rule is the proposed issue body, ready to paste.
 
 ---
+Turso's query planner drops materialized aggregation entirely when it finds a type-affinity mismatch between the columns of a LEFT JOIN (e.g. INTEGER outer and TEXT subquery), and falls back to running a coroutine that rebuilds the aggregation for each outer row. This results in significantly degraded performance relative to SQLite.
 
-SQLite makes two independent decisions when planning an uncorrelated FROM-clause subquery on the inner side of a join: **(A)** materialize the subquery's result once, and **(B)** optionally build an automatic index on that cached result so probes become seeks. Turso fused them: materialization exists only *as* the ephemeral probe index. When the index is disqualified — a join-key affinity mismatch is merely the most reproducible trigger — materialization vanishes with it, and the plan collapses to re-running the entire subquery (including its GROUP BY over the full inner table) once per outer row.
+Why the fallback lands on a coroutine: SQLite makes two independent decisions when planning an uncorrelated FROM-clause subquery on the inner side of a join — **(A)** materialize the subquery's result once, and **(B)** optionally build an automatic index on that cached result so probes become seeks. Turso implements them as a single decision: the only way it materializes such a subquery is by building the ephemeral probe index on it. So when the planner rejects the index — the affinity mismatch is the most reproducible reason, but any rejection behaves the same — there is no "materialized table without an index" plan to fall back to, as there is in SQLite. The plan falls all the way back to a coroutine, which re-runs the entire subquery (including its GROUP BY over the full inner table) once per outer row.
 
 - SQLite's degradation ladder: index seek → **re-scan of the materialized result** (~2.5k cached rows per outer row)
 - Turso's ladder: index seek → **re-execute the aggregation** (200k raw rows per outer row)
