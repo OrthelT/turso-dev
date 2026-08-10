@@ -41,16 +41,17 @@ for i in range(200000):
 print("COMMIT;")
 ```
 
-The query — identical except for which history table the subquery reads:
+Run the following query twice: once as written, and once with `history_int` substituted for `history_txt`. The two tables hold the same data — the only difference is the declared type of `type_id` (VARCHAR vs INTEGER), which determines how it compares against `watchlist.type_id` (an INTEGER) in the join condition:
 
 ```sql
 SELECT count(*), sum(h.avgp)
 FROM watchlist w
-LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_XXX GROUP BY type_id) h
+LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_txt GROUP BY type_id) h
   ON w.type_id = h.type_id;
+-- run again with history_int in place of history_txt
 ```
 
-> **`LEFT JOIN` is load-bearing.** It pins the join order with `watchlist` outer. With an inner `JOIN` the optimizer reorders the subquery to the outer position and the bug does not appear.
+> **Reproducing this requires `LEFT JOIN`, not plain `JOIN`.** The LEFT JOIN forces `watchlist` to stay on the outer side of the join. With an inner `JOIN`, the optimizer moves the subquery to the outer position and the slowdown does not occur.
 
 Timings (debug build — ratios are meaningful, absolute numbers carry roughly 30–60× overhead vs a release build; outer table cut to 100 rows so the slow case terminates):
 
@@ -69,7 +70,7 @@ Rendered with the plan visualizer from draft PR #8316 (`tursodb --planviz`), whi
 
 ![coroutine collapse: subquery body re-executed per outer row](https://raw.githubusercontent.com/OrthelT/turso-dev/df331ba86e34de5fa8c3b8603193ac76174cf35f/docs/perf/subquery-materialization/planviz/coroutine-bug.png)
 
-**Matched affinity (`history_int`).** Identical query; the same subquery body now runs **once**, materialized into an ephemeral index, and the join probes it with seeks:
+**Matched affinity (`history_int`).** The same query reading `history_int` instead: the subquery body now runs **once**, materialized into an ephemeral index, and the join probes it with seeks:
 
 ![matched affinity: materialized once into an ephemeral index, probed by seeks](https://raw.githubusercontent.com/OrthelT/turso-dev/df331ba86e34de5fa8c3b8603193ac76174cf35f/docs/perf/subquery-materialization/planviz/matched-affinity-indexed.png)
 
