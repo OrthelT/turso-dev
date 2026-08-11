@@ -20,27 +20,27 @@ Much of the wiring needed to address this was implemented in the fix for #2974; 
 
 ## Reproduction
 
+The reproducer is entirely SQL. Paste it into `tursodb`, or into `sqlite3` for the comparison run — it builds its own data, with no external script or seed file. It relies only on `generate_series`, which both shells provide.
+
 ```sql
-CREATE TABLE watchlist   (type_id INTEGER PRIMARY KEY, name TEXT);   -- 100 rows
-CREATE TABLE history_txt (type_id VARCHAR, price REAL, ts INTEGER);  -- 200,000 rows
-CREATE TABLE history_int (type_id INTEGER, price REAL, ts INTEGER);  -- 200,000 rows, same data
+CREATE TABLE watchlist   (type_id INTEGER PRIMARY KEY, name TEXT);  -- 100 rows
+CREATE TABLE history_txt (type_id VARCHAR, price REAL);             -- 200,000 rows
+CREATE TABLE history_int (type_id INTEGER, price REAL);             -- 200,000 rows, same data
+
+INSERT INTO watchlist
+SELECT value, 'item_' || value FROM generate_series(1, 100);
+
+-- 200,000 rows over 2,000 distinct type_id values, ~100 rows each.
+-- type_id 1 through 100 are the values that match a watchlist row.
+INSERT INTO history_int
+SELECT abs(random()) % 2000 + 1, abs(random()) % 1000 FROM generate_series(1, 200000);
+
+-- The same rows again; only the declared column type differs.
+INSERT INTO history_txt
+SELECT CAST(type_id AS TEXT), price FROM history_int;
 ```
 
-This script generates the data used for the timings below. The specific values are not important — the bug reproduces with any data of this shape:
-
-```python
-import random
-random.seed(42)
-print("BEGIN;")
-for i in range(1, 101):
-    print(f"INSERT INTO watchlist VALUES ({i}, 'item_{i}');")
-for i in range(200000):
-    tid = random.randint(1, 2000)  # ~2,000 groups in the subquery; 100 of them match watchlist rows
-    price = round(random.uniform(1, 1000), 2)
-    print(f"INSERT INTO history_txt VALUES ('{tid}', {price}, {1700000000+i});")
-    print(f"INSERT INTO history_int VALUES ({tid}, {price}, {1700000000+i});")
-print("COMMIT;")
-```
+The specific values are not important — the bug reproduces with any data of this shape. What matters is that `history_txt` and `history_int` hold the same rows, which the final `CAST` guarantees.
 
 Run the following query twice: once as written, and once with `history_int` substituted for `history_txt`. The two tables hold the same data — the only difference is the declared type of `type_id` (VARCHAR vs INTEGER), which determines how it compares against `watchlist.type_id` (an INTEGER) in the join condition:
 
