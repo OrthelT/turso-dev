@@ -11,17 +11,17 @@ Turso's query planner drops materialized aggregation entirely when it finds a ty
 
 Why the fallback lands on a coroutine: SQLite makes two independent decisions when planning an uncorrelated FROM-clause subquery on the inner side of a join — **(A)** materialize the subquery's result once, and **(B)** optionally build an automatic index on that cached result so probes become seeks. Turso implements them as a single decision: the only way it materializes such a subquery is by building the ephemeral probe index on it. So when the planner rejects the index — the affinity mismatch is the most reproducible reason, but any rejection behaves the same — there is no "materialized table without an index" plan to fall back to, as there is in SQLite. The plan falls all the way back to a coroutine, which re-runs the entire subquery (including its GROUP BY over the full inner table) once per outer row.
 
-- SQLite's degradation ladder: index seek → **re-scan of the materialized result** (~2.5k cached rows per outer row)
+- SQLite's degradation ladder: index seek → **re-scan of the materialized result** (a few thousand cached rows per outer row)
 - Turso's ladder: index seek → **re-execute the aggregation** (200k raw rows per outer row)
 
-Results are correct in every variant; this is purely a performance defect. In the production workload that surfaced it (2,354 × 797,817 rows), the query takes **117 s in Turso vs 0.27 s in SQLite**.
+Results are correct in every variant; this is purely a performance issue, but a significant one. In the production database where it first appeared (2,354 × 797,817 rows), a query that completed in **0.27 s** in SQLite took **117 s** in Turso.
 
-This is the unhandled case of #2974's fix, not a new class of defect — details in "Prior art" below.
+Much of the wiring needed to address this was implemented in the fix for #2974; this is a case that fix never covered. Details in "Prior art" below.
 
 ## Reproduction
 
 ```sql
-CREATE TABLE watchlist   (type_id INTEGER PRIMARY KEY, name TEXT);   -- 2,000 rows
+CREATE TABLE watchlist   (type_id INTEGER PRIMARY KEY, name TEXT);   -- 100 rows
 CREATE TABLE history_txt (type_id VARCHAR, price REAL, ts INTEGER);  -- 200,000 rows
 CREATE TABLE history_int (type_id INTEGER, price REAL, ts INTEGER);  -- 200,000 rows, same data
 ```
@@ -32,10 +32,10 @@ This script generates the data used for the timings below. The specific values a
 import random
 random.seed(42)
 print("BEGIN;")
-for i in range(1, 2001):
+for i in range(1, 101):
     print(f"INSERT INTO watchlist VALUES ({i}, 'item_{i}');")
 for i in range(200000):
-    tid = random.randint(1, 2000)
+    tid = random.randint(1, 2000)  # ~2,000 groups in the subquery; 100 of them match watchlist rows
     price = round(random.uniform(1, 1000), 2)
     print(f"INSERT INTO history_txt VALUES ('{tid}', {price}, {1700000000+i});")
     print(f"INSERT INTO history_int VALUES ({tid}, {price}, {1700000000+i});")
@@ -52,16 +52,18 @@ LEFT JOIN (SELECT type_id, avg(price) AS avgp FROM history_txt GROUP BY type_id)
 -- run again with history_int in place of history_txt
 ```
 
-> **Reproducing this requires `LEFT JOIN`, not plain `JOIN`.** The LEFT JOIN forces `watchlist` to stay on the outer side of the join. With an inner `JOIN`, the optimizer moves the subquery to the outer position and the slowdown does not occur.
+> **Reproducing this requires `LEFT JOIN`, not `JOIN`.** The LEFT JOIN forces `watchlist` to stay on the outer side of the join. With an inner `JOIN`, the optimizer moves the subquery to the outer position and the query executes as expected. 
 
-Two notes on the timings below. First, they were measured on a debug build, which is roughly 30–60× slower than a release build across the board — so compare the two rows against each other rather than reading the absolute times. Second, for these runs `watchlist` was loaded with 100 rows instead of 2,000: the slow variant re-runs the 200,000-row aggregation once per `watchlist` row, so measuring it at the full 2,000 rows on a debug build would take about an hour.
+## Timings
 
-| subquery source | join-key comparison | plan | time (100 `watchlist` rows) |
+| subquery source | join-key comparison | plan | time |
 |---|---|---|---|
 | `history_int` | INTEGER = INTEGER | `SEARCH h USING INDEX ephemeral_subquery_t3 (type_id=?)` | **2.1 s** |
 | `history_txt` | INTEGER = VARCHAR | `SCAN h` (coroutine, re-executed per row) | **167.5 s (~80×)** |
 
-The gap grows linearly with the `watchlist` row count, which matches the production report (2,354 rows: 117 s vs SQLite's 0.27 s).
+*Turso `0.8.0-pre.1` at `d14a446`, debug build. SQLite 3.45.1 runs both variants on this dataset in under 0.1 s.*
+
+The gap grows linearly with the `watchlist` row count — at production scale (2,354 rows) the reported times were 117 s vs SQLite's 0.27 s.
 
 ## The two plans, visualized
 
@@ -124,10 +126,10 @@ MATERIALIZE h                      <-- GROUP BY runs ONCE
   SCAN history_txt
   USE TEMP B-TREE FOR GROUP BY
 SCAN w
-SCAN h LEFT-JOIN                   <-- re-scans ~2,500 cached rows, not 200k raw rows
+SCAN h LEFT-JOIN                   <-- re-scans ~2,000 cached rows, not 200k raw rows
 ```
 
-0.273 s for the full 2,000 × 200,000 case. In the matched-affinity case SQLite additionally gets `BLOOM FILTER` + `AUTOMATIC COVERING INDEX`; on mismatch it loses only the index, never the materialization.
+0.081 s on the reproduction dataset; 0.273 s at the production-like 2,000 × 200,000 scale. In the matched-affinity case SQLite additionally gets `BLOOM FILTER` + `AUTOMATIC COVERING INDEX`; on mismatch it loses only the index, never the materialization.
 
 **PostgreSQL 16.13**, same schema/data: identical plan shape for both key types — Seq Scan → HashAggregate (GROUP BY once) → Hash Right Join. The type mismatch costs ~13% (43.4 ms vs 49.2 ms), not 80×. (Postgres refuses `INTEGER = VARCHAR` at compile time; with the required explicit cast it simply hashes the casted value.) Plans: [INTEGER](https://www.pgexplain.dev/plan/804d122b-c457-4d2f-b2cd-190685c871c4), [VARCHAR](https://www.pgexplain.dev/plan/4482dd7f-a925-469c-822c-34d5267361ac). A mature planner never demotes this query to per-outer-row re-execution.
 
@@ -152,7 +154,7 @@ Related but distinct open issues: #7393 (collation on the same access-method pat
 | approach | effect |
 |---|---|
 | `CAST(type_id AS INTEGER)` inside the subquery | Restores INTEGER affinity, re-opening the ephemeral-index path. 117 s → 0.10 s in production. |
-| `WITH h AS MATERIALIZED (…)` | Forces table materialization, hoisting the aggregation out of the loop. On the debug build: 167.5 s → 5.6 s with 100 `watchlist` rows; with the full 2,000 rows the default plan was abandoned after several minutes while the `MATERIALIZED` plan completes in 33.6 s. |
+| `WITH h AS MATERIALIZED (…)` | Forces table materialization, hoisting the aggregation out of the loop. 167.5 s → 5.6 s on the reproduction dataset. |
 
 The `AS MATERIALIZED` plan is the shape the planner should reach on its own — the aggregation runs once and the join re-scans the small cached result, exactly SQLite's plan for this query:
 
