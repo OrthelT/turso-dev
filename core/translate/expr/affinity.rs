@@ -61,13 +61,20 @@ pub(crate) fn get_expr_affinity(
             if let Some(tables) = referenced_tables {
                 if let Some((_, table_ref)) = tables.find_table_by_internal_id(*table) {
                     if let Some(col) = table_ref.get_column_at(*column) {
-                        if col.affinity() == Affinity::None {
+                        // Resolve the column's affinity ONCE. Column::affinity()
+                        // re-derives it from the declared type string, which
+                        // allocates and substring-scans, so asking twice is
+                        // measurably expensive on predicate-heavy queries.
+                        let affinity = col.affinity();
+                        if affinity == Affinity::None {
                             return Affinity::None;
                         }
-                        if let Some(btree) = table_ref.btree() {
-                            return col.affinity_with_strict(btree.is_strict);
+                        if table_ref.btree().is_some_and(|btree| btree.is_strict)
+                            && col.is_any_type()
+                        {
+                            return Affinity::Blob;
                         }
-                        return col.affinity();
+                        return affinity;
                     }
                 }
             }

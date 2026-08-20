@@ -5270,8 +5270,14 @@ impl Column {
         self.raw = (self.raw & !BASE_AFF_MASK) | ((v << BASE_AFF_SHIFT) & BASE_AFF_MASK);
     }
 
+    /// True when the column's declared type is literally `ANY`, which STRICT
+    /// tables treat as BLOB affinity.
+    pub fn is_any_type(&self) -> bool {
+        self.ty_str.eq_ignore_ascii_case("ANY")
+    }
+
     pub fn affinity_with_strict(&self, is_strict: bool) -> Affinity {
-        if is_strict && self.ty_str.eq_ignore_ascii_case("ANY") {
+        if is_strict && self.is_any_type() {
             Affinity::Blob
         } else {
             self.affinity()
